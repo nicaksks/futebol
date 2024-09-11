@@ -43,17 +43,12 @@ interface iAddress {
 
 class Globo {
 
-    public schedule: Array<iSchedule>
-    private html: string;
+    private _schedule: Array<iSchedule> = [];
+    private html: string = '';
 
-    constructor() {
-        this.schedule = []
-        this.html = '';
-    }
-
-    public async start(): Promise<void> {
+    public async schedule(): Promise<Array<iSchedule>> {
         await this.getSchedule();
-        this.getGames();
+        return this.getGames();
     }
 
     private async getSchedule(): Promise<void> {
@@ -62,7 +57,7 @@ class Globo {
         this.html = await response.text();
     }
 
-    private getGames(): void {
+    private getGames(): Array<iSchedule> {
 
         const splitHtml = this.html
             .split('<script type="application/ld+json">')
@@ -73,40 +68,43 @@ class Globo {
 
             this.isValidJSON(html);
         }
+
+        return this._schedule
     }
 
     private isValidJSON(html: string): void {
         try {
             const json = JSON.parse(html);
-            this.schedule.push(json);
+            this._schedule.push(json);
         } catch (e) { }
     }
 }
 
 class Webhook extends Globo {
-
-    private text: string;
-
+    
     constructor(
         private readonly URL: string
     ) {
         super()
-        this.text = '';
     }
+    
+    private async formatText(): Promise<string> {
+        const schedule = await this.schedule();
+        let text = '';
 
-    private async formatText(): Promise<void> {
-        await this.start();
-        for (const game of this.schedule) {
+        for (const game of schedule) {
             for (const sub of game.subEvent) {
-                this.text += `Campeonato: ${game.name} \nTimes: ${sub.name} \nHorário: ${this.epochTime(game.startDate)} \n\n`
+                text += `Campeonato: ${game.name} \nTimes: ${sub.name} \nHorário: ${this.epochTime(game.startDate)} \n\n`
             }
         }
+
+        return text;
     }
 
     private epochTime = (datetime: string): string => `<t:${new Date(datetime).getTime() / 1000}:R>`
 
     public async send(): Promise<void> {
-        await this.formatText()
+        const content = await this.formatText()
         fetch(this.URL, {
             method: 'POST',
             headers: {
@@ -114,7 +112,7 @@ class Webhook extends Globo {
             },
             body: JSON.stringify({
                 username: 'Globo',
-                content: this.text
+                content
             })
         })
             .catch(e => console.error(`Ocorreu um erro -> ${e}`))
